@@ -18,6 +18,11 @@ function isAllowedProjectPath(filePath) {
   return ALLOWED_PREFIXES.some((prefix) => filePath.startsWith(prefix));
 }
 
+function isPathContained(root, target) {
+  const relative = path.relative(root, target);
+  return !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
+}
+
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -30,11 +35,31 @@ export async function POST(req) {
       );
     }
 
-    const projectRoot = process.cwd();
-    const fullPath = path.join(projectRoot, filePath);
+    const projectRootResolved = await fs.realpath(process.cwd());
+    const fullPath = path.resolve(projectRootResolved, filePath);
+    const relativeFullPath = path.relative(projectRootResolved, fullPath);
+
+    if (
+      relativeFullPath === ".." ||
+      relativeFullPath.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativeFullPath)
+    ) {
+      return NextResponse.json(
+        { error: "File path is not allowed." },
+        { status: 400 }
+      );
+    }
 
     try {
-      const content = await fs.readFile(fullPath, "utf8");
+      const resolvedFullPath = await fs.realpath(fullPath);
+      if (!isPathContained(projectRootResolved, resolvedFullPath)) {
+        return NextResponse.json(
+          { error: "File path is not allowed." },
+          { status: 400 }
+        );
+      }
+
+      const content = await fs.readFile(resolvedFullPath, "utf8");
       return NextResponse.json({
         ok: true,
         exists: true,
