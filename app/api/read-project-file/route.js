@@ -35,11 +35,15 @@ export async function POST(req) {
       );
     }
 
-    const projectRoot = process.cwd();
-    const projectRootResolved = await fs.realpath(projectRoot);
+    const projectRootResolved = await fs.realpath(process.cwd());
     const fullPath = path.resolve(projectRootResolved, filePath);
+    const relativeFullPath = path.relative(projectRootResolved, fullPath);
 
-    if (!isPathContained(projectRootResolved, fullPath)) {
+    if (
+      relativeFullPath === ".." ||
+      relativeFullPath.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativeFullPath)
+    ) {
       return NextResponse.json(
         { error: "File path is not allowed." },
         { status: 400 }
