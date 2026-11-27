@@ -19,6 +19,11 @@ function isSafeRelativePath(filePath) {
   return true;
 }
 
+function isPathContained(root, target) {
+  const relative = path.relative(root, target);
+  return !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
+}
+
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -38,6 +43,7 @@ export async function POST(req) {
     const outputRoot = path.join(projectRoot, "generated-projects", safeProjectName);
 
     await fs.mkdir(outputRoot, { recursive: true });
+    const resolvedOutputRoot = await fs.realpath(outputRoot);
 
     const writtenFiles = [];
 
@@ -53,10 +59,37 @@ export async function POST(req) {
         );
       }
 
-      const fullPath = path.join(outputRoot, file.path);
+      const fullPath = path.resolve(resolvedOutputRoot, file.path);
+      if (!isPathContained(resolvedOutputRoot, fullPath)) {
+        return NextResponse.json(
+          { error: `Unsafe file path rejected: ${file.path}` },
+          { status: 400 }
+        );
+      }
+
       const fullDir = path.dirname(fullPath);
 
       await fs.mkdir(fullDir, { recursive: true });
+      const resolvedFullDir = await fs.realpath(fullDir);
+      if (!isPathContained(resolvedOutputRoot, resolvedFullDir)) {
+        return NextResponse.json(
+          { error: `Unsafe file path rejected: ${file.path}` },
+          { status: 400 }
+        );
+      }
+
+      try {
+        const resolvedFullPath = await fs.realpath(fullPath);
+        if (!isPathContained(resolvedOutputRoot, resolvedFullPath)) {
+          return NextResponse.json(
+            { error: `Unsafe file path rejected: ${file.path}` },
+            { status: 400 }
+          );
+        }
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+
       await fs.writeFile(fullPath, file.content, "utf8");
 
       writtenFiles.push({
